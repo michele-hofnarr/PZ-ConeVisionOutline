@@ -395,39 +395,39 @@ local function updateConeOutline()
 							if visible then
 								-- Engine draws outline for this Z level (color/alpha from options)
 								local cr, cg, cb, ca = getConeOutlineColor()
-								-- Scale by the square's light level. GetRLightLevel/G/B read the
-								-- plain lightLevel field the engine already maintains -- deliberately
-								-- not getLightLevel(int)/getLightLevel2(), which construct a new
-								-- native LightingJNI object on every single call and were confirmed
-								-- (by isolating the call from its result) to corrupt the outline's
-								-- draw-through-geometry rendering on their own.
+								-- "Scale outline by light level" and "Scale outline by fog" each yield a
+								-- 0..1 factor; they multiply together and ConeOutlineAlpha (ca) is the
+								-- ceiling: the outline sits at the slider value in normal light and only
+								-- fades once light*fog drops below it. Both options off -> factor 1 -> ca.
 								--
-								-- KNOWN LIMITATION: giving an outlined object a per-object alpha
-								-- that differs from the mod's flat default can still, on some
-								-- specific scene geometry (thin posts/beams; ordinary walls are
-								-- unaffected), make that one outline respect scene depth instead of
-								-- drawing through it. Confirmed this is not about which Java call
-								-- supplies the value (GetRLightLevel/G/B are plain field reads) and
-								-- not about how many distinct values are live at once (quantizing to
-								-- a handful of steps did not help either). Whatever decides this
-								-- lives in the engine's own outline renderer; narrowing it further
-								-- would need instrumenting that renderer, out of reach from Lua.
+								-- KNOWN LIMITATION: giving an outlined object a per-object alpha that
+								-- differs from the mod's flat default can still, on some specific scene
+								-- geometry (thin posts/beams; ordinary walls are unaffected), make that
+								-- one outline respect scene depth instead of drawing through it. This
+								-- lives in the engine's own outline renderer, out of reach from Lua.
+								local lightFactor = 1
 								if O and O.ScaleOutlineByLight then
-									local rl, gl, bl = square:GetRLightLevel(), square:GetGLightLevel(), square:GetBLightLevel()
-									if rl ~= nil and gl ~= nil and bl ~= nil then
-										local lightLevel = math.max(rl, gl, bl) / 255
-										ca = ca * lightLevel
+									-- getLightInfo(playerNum): the cached per-player ColorInfo the engine
+									-- itself uses to light the zombie's model (IsoObject.renderModel). It
+									-- includes the player's flashlight, lamps and fire. The old path,
+									-- GetRLightLevel/G/B (packed IsoGridSquare.lightLevel), is only the
+									-- world sky-ambient (GameTime.getSkyLightLevel) and never a local
+									-- light, so a zombie lit by your torch at night still read as dark.
+									-- Plain array read, no LightingJNI allocation.
+									local ci = square:getLightInfo(character:getPlayerNum())
+									if ci then
+										lightFactor = math.max(ci:getR(), ci:getG(), ci:getB())
 									end
 								end
+								local fogFactor = 1
 								if fogIntensity > 0 then
-									-- No per-square fog value exists, so this approximates the
-									-- look of real fog (barely noticeable close up, thicker with
-									-- distance) by scaling the single world fog reading with how
-									-- far this particular target is, out of the current clear-
-									-- visibility radius (see getWorldViewDistance() above).
-									local fogFactor = fogIntensity * math.min(math.sqrt(distSq) / fogRampDistance, 1)
-									ca = ca * (1 - fogFactor)
+									-- No per-square fog value exists, so this approximates the look of
+									-- real fog (barely noticeable close up, thicker with distance) by
+									-- scaling the single world fog reading with how far this target is,
+									-- out of the current clear-visibility radius (getWorldViewDistance()).
+									fogFactor = 1 - fogIntensity * math.min(math.sqrt(distSq) / fogRampDistance, 1)
 								end
+								ca = math.min(lightFactor * fogFactor, ca)
 								-- Melee hit-list targets stay green, same as before; the set now comes
 								-- from the engine's own repaint instead of from reflection.
 								if meleeEquipped and isRepaintedByEngine(obj) then

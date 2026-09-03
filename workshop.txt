@@ -52,6 +52,8 @@ description=
 description=Tested in singleplayer on 42.20.0. Multiplayer is still untested.
 description=
 description=v1.4 - Added Simplified Chinese (CN) translation, contributed by laoda.
+description=
+description=Fixed: with "Scale outline by light level" on, a zombie lit by your flashlight at night still showed almost no outline. The mod was reading the square's sky-ambient light (no local light sources) instead of the per-player light the game uses to draw the zombie itself. It now reads the same value, so flashlights, lamps and fire count. The cone outline intensity slider is now a ceiling: the outline stays at your chosen opacity in normal light and only fades once light (and fog, if enabled) drop below it.
 
 tags=Build 42;Animals;Interface;QoL
 visibility=public
