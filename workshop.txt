@@ -51,6 +51,7 @@ description=Known issue: with either of these two dimming options on, the outlin
 description=
 description=Tested in singleplayer on 42.20.0. Multiplayer is still untested.
 description=
+description=v1.4 - Added Simplified Chinese (CN) translation, contributed by laoda.
 
 tags=Build 42;Animals;Interface;QoL
 visibility=public
