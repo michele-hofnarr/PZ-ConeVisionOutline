@@ -1,0 +1,11 @@
+UI_EN = {
+	UI_CVO_Options_Title = "Cone Vision Outline",
+	UI_CVO_Options_ConeOutlineColor = "Cone outline color",
+	UI_CVO_Options_ConeOutlineColor_Tooltip = "Color of the outline for zombies and animals in the vision cone when aiming (RMB). Melee hit-list green outline is unchanged.",
+	UI_CVO_Options_ConeOutlineAlpha = "Cone outline intensity",
+	UI_CVO_Options_ConeOutlineAlpha_Tooltip = "Outline opacity (0 — barely visible, 1 — full brightness). Same idea as View Cone Opacity in game options.",
+	UI_CVO_Options_ScaleOutlineByLight = "Scale outline by light level",
+	UI_CVO_Options_ScaleOutlineByLight_Tooltip = "When on, outline alpha is multiplied by the tile light level (darker = fainter outline, full dark = no outline).",
+	UI_CVO_Options_VehicleOutlineAlwaysOn = "Vehicle: outlines always on",
+	UI_CVO_Options_VehicleOutlineAlwaysOn_Tooltip = "When on, in a vehicle outlines are shown without holding RMB (aim/look). When off, same as vanilla: hold RMB to see outlines.",
+}

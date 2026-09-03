@@ -1,0 +1,11 @@
+UI_RU = {
+	UI_CVO_Options_Title = "Cone Vision Outline",
+	UI_CVO_Options_ConeOutlineColor = "Цвет обводки конуса",
+	UI_CVO_Options_ConeOutlineColor_Tooltip = "Цвет обводки зомби и животных в конусе обзора при прицеливании (ПКМ). Зелёная обводка цели в ближнем бою не меняется.",
+	UI_CVO_Options_ConeOutlineAlpha = "Интенсивность обводки конуса",
+	UI_CVO_Options_ConeOutlineAlpha_Tooltip = "Прозрачность обводки (0 — почти невидимо, 1 — максимально ярко). Аналог View Cone Opacity в настройках игры.",
+	UI_CVO_Options_ScaleOutlineByLight = "Обводка по освещённости",
+	UI_CVO_Options_ScaleOutlineByLight_Tooltip = "Включено: прозрачность обводки умножается на уровень света тайла (в темноте — слабее, в полной темноте — нет обводки).",
+	UI_CVO_Options_VehicleOutlineAlwaysOn = "В транспорте: обводка всегда",
+	UI_CVO_Options_VehicleOutlineAlwaysOn_Tooltip = "Включено: в машине обводка показывается без зажатия ПКМ. Выключено: как в ванилле — обводка только при прицеливании (ПКМ).",
+}
