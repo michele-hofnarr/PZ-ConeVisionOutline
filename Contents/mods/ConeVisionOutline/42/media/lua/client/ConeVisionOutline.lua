@@ -4,6 +4,14 @@
 -- blocks getClassField* outside of -debug, so that never worked for normal players. See
 -- isRepaintedByEngine() below for how the hit list is identified now.
 -- Overlay (optional, see Mod Options): when engine does not draw outline (e.g. floor above on stairs), we draw outline in 2D on top.
+--
+-- Multiplayer and split-screen: client-side only, and that is enough. setOutlineHighlight is
+-- local render state (it registers the object with FBORenderObjectOutline and sends
+-- nothing), so every client computes its own outlines and the server never sees them.
+-- OnPlayerUpdate fires only for local players -- once per tick normally, once per player in
+-- split-screen -- so each pass works on the player it was called for, in that player's
+-- outline slot, with its own state and its own overlay. The only server-side piece is the
+-- optional Sandbox enforcement in ConeVisionOutline_Options.lua.
 require "Foraging/forageSystem"
 
 local O
@@ -58,16 +66,33 @@ local function reportError(err)
 	print("[ConeVisionOutline] ERROR: " .. msg)
 end
 
-local lastHighlighted = {}
--- obj -> packed outline colour this mod wrote on the previous frame. Used to detect when
--- the engine has repainted an object, which is how the melee hit list is identified now.
-local lastWrittenCol = {}
-local lastOverlayTargets = {}  -- objects on adjacent floor that engine won't outline; we draw them ourselves
-local overlayUI = nil
-local overlayInUIManager = false  -- true when overlay is currently in UI (so we remove it when not aiming)
+-- Per local player, keyed by player number (0-3), which is also the outline slot the
+-- player's pass writes to. Split-screen players must not share this: one player's pass
+-- would clear outlines the other one just set.
+local playerStates = {}
+local function getState(playerNum)
+	local state = playerStates[playerNum]
+	if not state then
+		state = {
+			highlighted = {},
+			-- obj -> packed outline colour this mod wrote on the previous frame. Used to detect
+			-- when the engine has repainted an object, which is how the melee hit list is
+			-- identified now.
+			writtenCol = {},
+			overlayTargets = {},  -- objects on adjacent floor that engine won't outline; we draw them ourselves
+			overlayUI = nil,
+			overlayInUIManager = false,  -- true when overlay is currently in UI (so we remove it when not aiming)
+		}
+		playerStates[playerNum] = state
+		-- Once per player slot per session: shows in console.txt which local players the mod
+		-- is serving, and whether this is a multiplayer client.
+		print("[ConeVisionOutline] serving local player " .. tostring(playerNum)
+			.. (isMultiplayer() and " (multiplayer client)" or " (singleplayer)"))
+	end
+	return state
+end
 local RADIUS_VISION = 50
 local RADIUS_OVERLAY_FLOOR_ABOVE = 5  -- max horizontal distance (tiles) for overlay on floor +1
-local PLAYER_NUM = 0
 local OUTLINE_ALPHA = 0.3
 local OVERLAY_BOX_W = 28
 local OVERLAY_BOX_H = 56
@@ -93,26 +118,33 @@ local function buildDirVectors()
 	}
 end
 
-local function clearOutline(obj)
+local function clearOutline(obj, playerNum)
 	-- Single call in pcall: avoid any other method on obj (stale refs can make them throw).
 	local ok = pcall(function()
-		obj:setOutlineHighlight(PLAYER_NUM, false)
+		obj:setOutlineHighlight(playerNum, false)
 	end)
 	return ok
 end
 
-local function clearAll()
-	for obj, _ in pairs(lastHighlighted) do
-		clearOutline(obj)
+local function clearAll(state, playerNum)
+	for obj, _ in pairs(state.highlighted) do
+		clearOutline(obj, playerNum)
 	end
-	lastHighlighted = {}
-	lastWrittenCol = {}
-	lastOverlayTargets = {}
+	state.highlighted = {}
+	state.writtenCol = {}
+	state.overlayTargets = {}
 end
 
-local function readOutlineCol(obj)
+local function hideOverlay(state)
+	if state.overlayInUIManager and state.overlayUI then
+		pcall(function() state.overlayUI:setVisible(false); state.overlayUI:removeFromUIManager() end)
+		state.overlayInUIManager = false
+	end
+end
+
+local function readOutlineCol(obj, playerNum)
 	local ok, v = pcall(function()
-		return obj:getOutlineHighlightCol(PLAYER_NUM)
+		return obj:getOutlineHighlightCol(playerNum)
 	end)
 	if ok then return v end
 	return nil
@@ -127,10 +159,16 @@ end
 -- So if an object's colour is no longer the one we wrote last frame, the engine claimed
 -- it, which means it is in the hit list. Colour-agnostic on purpose: it does not matter
 -- whether the engine used the 'Bad' highlight colour or the debug cyan.
-local function isRepaintedByEngine(obj)
-	local prev = lastWrittenCol[obj]
+--
+-- KNOWN LIMITATION (split-screen only): the engine writes the hit-list colour with the
+-- no-index setOutlineHighlightCol(r,g,b,a), which fills every player's slot. So when one
+-- split-screen player aims with a melee weapon, a second player aiming with a melee weapon
+-- at the same targets also sees them green. The hit list itself (HitInfo) is not exposed to
+-- Lua, so there is no way to tell whose hit list repainted the object.
+local function isRepaintedByEngine(obj, state, playerNum)
+	local prev = state.writtenCol[obj]
 	if prev == nil then return false end  -- never painted by us yet, cannot compare
-	local cur = readOutlineCol(obj)
+	local cur = readOutlineCol(obj, playerNum)
 	if cur == nil then return false end
 	return cur ~= prev
 end
@@ -217,7 +255,10 @@ local function engineVisibilitySupported(character)
 	return engineVisibilityOk
 end
 
--- Overlay UI: draws pulsing circle (growl-style) for targets on floor+1 that the engine does not draw
+-- Overlay UI: draws pulsing circle (growl-style) for targets on floor+1 that the engine does not draw.
+-- One element per local player, covering that player's split-screen viewport and drawing
+-- only that player's targets. It must not ask getPlayer() who it belongs to: outside
+-- OnPlayerUpdate that is simply whichever local player updated last.
 local ConeVisionOutlineOverlay = ISUIElement:derive("ConeVisionOutlineOverlay")
 local function getOverlayCircleTexture()
 	if overlayCircleTex then return overlayCircleTex end
@@ -232,15 +273,14 @@ function ConeVisionOutlineOverlay:render()
 		pcall(function() self.javaObject:setConsumeMouseEvents(false) end)
 		self._mousePassThrough = true
 	end
-	if not lastOverlayTargets then return end
+	local pid = self.playerNum
+	local targets = playerStates[pid] and playerStates[pid].overlayTargets
+	if not targets then return end
 	local hasAny = false
-	for _ in pairs(lastOverlayTargets) do hasAny = true; break end
+	for _ in pairs(targets) do hasAny = true; break end
 	if not hasAny then return end
 	local tex = getOverlayCircleTexture()
 	if not tex then return end
-	local character = getPlayer()
-	if not character then return end
-	local pid = character:getPlayerNum()
 	local screenLeft = getPlayerScreenLeft(pid)
 	local screenTop = getPlayerScreenTop(pid)
 	local t = (getTimestampMs() or 0) / 1000
@@ -249,7 +289,7 @@ function ConeVisionOutlineOverlay:render()
 	local pulseAlpha = PULSE_ALPHA_MIN + (PULSE_ALPHA_MAX - PULSE_ALPHA_MIN) * (0.5 + 0.5 * math.sin(t * PULSE_SPEED * twoPi * 1.1))
 	local size = OVERLAY_CIRCLE_SIZE * pulseScale
 	local r, g, b = 1, 1, 1
-	for obj, _ in pairs(lastOverlayTargets) do
+	for obj, _ in pairs(targets) do
 		local ok, cx, cy = pcall(function()
 			local square = getObjSquare(obj)
 			if not square then return nil, nil end
@@ -264,52 +304,49 @@ function ConeVisionOutlineOverlay:render()
 		end
 	end
 end
-function ConeVisionOutlineOverlay:new()
-	local pid = getPlayer() and getPlayer():getPlayerNum() or 0
+function ConeVisionOutlineOverlay:new(pid)
 	local x = getPlayerScreenLeft(pid)
 	local y = getPlayerScreenTop(pid)
 	local w = getPlayerScreenWidth(pid)
 	local h = getPlayerScreenHeight(pid)
 	local o = ISUIElement.new(self, x, y, w, h)
+	o.playerNum = pid
 	o:setCapture(false)
 	return o
 end
-local function ensureOverlayUI()
-	if overlayUI then return end
+local function ensureOverlayUI(state, pid)
+	if state.overlayUI then return end
 	if not ISUIElement or type(ISUIElement.derive) ~= "function" then return end
 	if not getPlayerScreenLeft or not getPlayerScreenWidth then return end
-	overlayUI = ConeVisionOutlineOverlay:new()
+	local overlayUI = ConeVisionOutlineOverlay:new(pid)
 	if not overlayUI then return end
+	state.overlayUI = overlayUI
 	if overlayUI.initialise then overlayUI:initialise() end
 	if overlayUI.addToUIManager then overlayUI:addToUIManager() end
-	overlayInUIManager = true
+	state.overlayInUIManager = true
 	-- So overlay never blocks RMB (aim) or other mouse
 	pcall(function()
-		if overlayUI.setX then overlayUI:setX(0) end
 		if overlayUI.javaObject and overlayUI.javaObject.setConsumeMouseEvents then
 			overlayUI.javaObject:setConsumeMouseEvents(false)
 		end
 	end)
 end
-local function updateOverlayBounds()
+local function updateOverlayBounds(state, pid)
+	local overlayUI = state.overlayUI
 	if not overlayUI then return end
-	local character = getPlayer()
-	if not character then return end
-	local pid = character:getPlayerNum()
 	if getPlayerScreenLeft and overlayUI.setX then overlayUI:setX(getPlayerScreenLeft(pid)) end
 	if getPlayerScreenTop and overlayUI.setY then overlayUI:setY(getPlayerScreenTop(pid)) end
 	if getPlayerScreenWidth and overlayUI.setWidth then overlayUI:setWidth(getPlayerScreenWidth(pid)) end
 	if getPlayerScreenHeight and overlayUI.setHeight then overlayUI:setHeight(getPlayerScreenHeight(pid)) end
 end
 
-local function updateConeOutline()
+local function updateConeOutline(character)
 	local ok, err = pcall(function()
-		-- Same as game: getPlayer() for current/controlled character (works in vehicle)
-		local character = getPlayer()
-		if not character then
-			clearAll()
-			return
-		end
+		-- The local player this pass is for (works in vehicle). Not getPlayer(): in
+		-- split-screen that is only the player being updated by coincidence of call order.
+		if not character then return end
+		local playerNum = character:getPlayerNum()
+		local state = getState(playerNum)
 
 		-- On foot = isAiming(); in vehicle = isLookingWhileInVehicle() or (option) always when in vehicle.
 		-- OutlineAlwaysOn (default off) bypasses all of that: outline is on regardless of
@@ -319,25 +356,19 @@ local function updateConeOutline()
 		local isLooking = (O and O.OutlineAlwaysOn) or character:isAiming() or character:isLookingWhileInVehicle()
 			or (O and O.VehicleOutlineAlwaysOn and inVehicle)
 		if not isLooking then
-			lastOverlayTargets = {}
-			if overlayInUIManager and overlayUI and overlayUI.removeFromUIManager then
-				pcall(function() overlayUI:setVisible(false); overlayUI:removeFromUIManager() end)
-				overlayInUIManager = false
-			end
-			clearAll()
+			hideOverlay(state)
+			clearAll(state, playerNum)
 			return
 		end
 
 		-- Everything (cone + hit-list outline) only when game option "Melee outline" is on
 		if not getCore():getOptionMeleeOutline() then
-			lastOverlayTargets = {}
-			clearAll()
+			clearAll(state, playerNum)
 			return
 		end
 
 		if isShortSightedWithoutGlasses(character) then
-			lastOverlayTargets = {}
-			clearAll()
+			clearAll(state, playerNum)
 			return
 		end
 
@@ -356,7 +387,8 @@ local function updateConeOutline()
 		local cell = getCell()
 		if not cell then return end
 
-		lastOverlayTargets = {}
+		local overlayTargets = {}
+		state.overlayTargets = overlayTargets
 		local plX, plY = character:getX(), character:getY()
 		-- B42.20: IsoCell.getObjectList() returns java.util.Set, which has no :get(i).
 		-- Calling :get(i) on it threw every frame and the outer pcall hid it, so the mod
@@ -386,7 +418,7 @@ local function updateConeOutline()
 							if useLegacy then
 								visible = isVisibleLegacy(character, square)
 							else
-								visible = isVisibleToEngine(obj, character:getPlayerNum())
+								visible = isVisibleToEngine(obj, playerNum)
 							end
 							local plZ = character:getZ()
 							local sqZ = square:getZ()
@@ -414,7 +446,7 @@ local function updateConeOutline()
 									-- world sky-ambient (GameTime.getSkyLightLevel) and never a local
 									-- light, so a zombie lit by your torch at night still read as dark.
 									-- Plain array read, no LightingJNI allocation.
-									local ci = square:getLightInfo(character:getPlayerNum())
+									local ci = square:getLightInfo(playerNum)
 									if ci then
 										lightFactor = math.max(ci:getR(), ci:getG(), ci:getB())
 									end
@@ -430,17 +462,17 @@ local function updateConeOutline()
 								ca = math.min(lightFactor * fogFactor, ca)
 								-- Melee hit-list targets stay green, same as before; the set now comes
 								-- from the engine's own repaint instead of from reflection.
-								if meleeEquipped and isRepaintedByEngine(obj) then
+								if meleeEquipped and isRepaintedByEngine(obj, state, playerNum) then
 									cr, cg, cb = 0, 1, 0
 								end
-								obj:setOutlineHighlight(PLAYER_NUM, true)
-								obj:setOutlineHighlightCol(PLAYER_NUM, cr, cg, cb, ca)
+								obj:setOutlineHighlight(playerNum, true)
+								obj:setOutlineHighlightCol(playerNum, cr, cg, cb, ca)
 								-- Read back what actually landed so the next frame compares exactly.
-								newWrittenCol[obj] = readOutlineCol(obj)
+								newWrittenCol[obj] = readOutlineCol(obj, playerNum)
 								newHighlighted[obj] = true
 							elseif floorAboveOnly and inCone and (distSq <= RADIUS_OVERLAY_FLOOR_ABOVE * RADIUS_OVERLAY_FLOOR_ABOVE) then
 								-- Floor above, in cone, within 5 tiles: we draw overlay (always on)
-								lastOverlayTargets[obj] = true
+								overlayTargets[obj] = true
 							end
 						end
 					end
@@ -449,36 +481,47 @@ local function updateConeOutline()
 		end
 
 		-- Clear outlines for objects that left vision
-		for obj, _ in pairs(lastHighlighted) do
+		for obj, _ in pairs(state.highlighted) do
 			if not newHighlighted[obj] then
-				clearOutline(obj)
+				clearOutline(obj, playerNum)
 			end
 		end
-		lastHighlighted = newHighlighted
-		lastWrittenCol = newWrittenCol
+		state.highlighted = newHighlighted
+		state.writtenCol = newWrittenCol
 
 		local hasOverlayTargets = false
-		for _ in pairs(lastOverlayTargets) do
+		for _ in pairs(overlayTargets) do
 			hasOverlayTargets = true
 			break
 		end
 		if hasOverlayTargets then
-			ensureOverlayUI()
-			updateOverlayBounds()
-			if overlayUI and not overlayInUIManager then
+			ensureOverlayUI(state, playerNum)
+			updateOverlayBounds(state, playerNum)
+			local overlayUI = state.overlayUI
+			if overlayUI and not state.overlayInUIManager then
 				pcall(function()
 					if overlayUI.setVisible then overlayUI:setVisible(true) end
 					if overlayUI.addToUIManager then overlayUI:addToUIManager() end
-					overlayInUIManager = true
+					state.overlayInUIManager = true
 				end)
 			end
-		elseif overlayInUIManager and overlayUI then
-			pcall(function() overlayUI:setVisible(false); overlayUI:removeFromUIManager() end)
-			overlayInUIManager = false
+		else
+			hideOverlay(state)
 		end
 	end)
 	if not ok then reportError(err) end
 end
 
+-- Only the player who died is cleared; a split-screen partner keeps their outlines.
+local function onPlayerDeath(character)
+	if not character then return end
+	local playerNum = character:getPlayerNum()
+	local state = playerStates[playerNum]
+	if state then
+		hideOverlay(state)
+		clearAll(state, playerNum)
+	end
+end
+
 Events.OnPlayerUpdate.Add(updateConeOutline)
-Events.OnPlayerDeath.Add(clearAll)
+Events.OnPlayerDeath.Add(onPlayerDeath)

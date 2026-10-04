@@ -1,0 +1,19 @@
+{
+    "Sandbox_ConeVisionOutline": "Cone Vision Outline",
+    "Sandbox_ConeVisionOutline_EnforceSettings": "Навязать эти настройки всем игрокам",
+    "Sandbox_ConeVisionOutline_EnforceSettings_tooltip": "Только для мультиплеера. По умолчанию выключено: каждый игрок пользуется своими настройками Cone Vision Outline (Настройки -> Моды). Включено: настройки ниже заменяют собственные настройки каждого игрока, и менять их в настройках мода бесполезно. Цвет обводки остаётся на выбор игрока. В одиночной игре не действует.",
+    "Sandbox_ConeVisionOutline_ConeOutlineAlpha": "Интенсивность обводки конуса",
+    "Sandbox_ConeVisionOutline_ConeOutlineAlpha_tooltip": "Прозрачность обводки, от 0 до 1 (по умолчанию 0.3). Действует, только если включено «Навязать эти настройки всем игрокам». То же, что одноимённая настройка мода.",
+    "Sandbox_ConeVisionOutline_LegacyOutlineMode": "Старый режим обводки",
+    "Sandbox_ConeVisionOutline_LegacyOutlineMode_tooltip": "Действует, только если включено «Навязать эти настройки всем игрокам». То же, что одноимённая настройка мода: старая проверка по видимости клетки вместо вопроса к игре, кого она рисует.",
+    "Sandbox_ConeVisionOutline_ScaleOutlineByLight": "Обводка по освещённости",
+    "Sandbox_ConeVisionOutline_ScaleOutlineByLight_tooltip": "Действует, только если включено «Навязать эти настройки всем игрокам». То же, что одноимённая настройка мода: обводка тускнеет по мере падения света на цели и пропадает в полной темноте. Включите, чтобы обводка не выдавала зомби в темноте.",
+    "Sandbox_ConeVisionOutline_ScaleOutlineByFog": "Обводка по туману",
+    "Sandbox_ConeVisionOutline_ScaleOutlineByFog_tooltip": "Действует, только если включено «Навязать эти настройки всем игрокам». То же, что одноимённая настройка мода: в тумане обводка тускнеет с расстоянием.",
+    "Sandbox_ConeVisionOutline_OutlineAlwaysOn": "Обводка всегда",
+    "Sandbox_ConeVisionOutline_OutlineAlwaysOn_tooltip": "Действует, только если включено «Навязать эти настройки всем игрокам». То же, что одноимённая настройка мода: обводка показывается постоянно, а не только при прицеливании (ПКМ).",
+    "Sandbox_ConeVisionOutline_VehicleOutlineAlwaysOn": "В транспорте: обводка всегда",
+    "Sandbox_ConeVisionOutline_VehicleOutlineAlwaysOn_tooltip": "Действует, только если включено «Навязать эти настройки всем игрокам». То же, что одноимённая настройка мода: в машине обводка показывается без зажатия ПКМ.",
+    "Sandbox_ConeVisionOutline_OutlineAnimals": "Обводка животных",
+    "Sandbox_ConeVisionOutline_OutlineAnimals_tooltip": "Действует, только если включено «Навязать эти настройки всем игрокам». То же, что одноимённая настройка мода: животные обводятся наравне с зомби."
+}

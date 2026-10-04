@@ -14,7 +14,52 @@ ConeVisionOutlineOptions.OutlineAnimals = true  -- outline animals as well as zo
 
 local PZOptions
 
-local function applyOptions()
+-- Server-enforced settings (Sandbox options page "Cone Vision Outline", see
+-- media/sandbox-options.txt). Mod options are per client, so on a multiplayer server every
+-- player picks their own; a server that wants e.g. no outlines through darkness can turn on
+-- EnforceSettings, and then these SandboxVars replace the player's own values. The outline
+-- colour is never enforced: it is cosmetic and changes nothing about what you can see.
+-- Singleplayer is never affected -- EnforceSettings is ignored there, so a player's own
+-- options always win.
+local SANDBOX_ENFORCED = {
+    "ConeOutlineAlpha",
+    "LegacyOutlineMode",
+    "ScaleOutlineByLight",
+    "ScaleOutlineByFog",
+    "OutlineAlwaysOn",
+    "VehicleOutlineAlwaysOn",
+    "OutlineAnimals",
+}
+
+-- Logged once per change, not per call: tells a server admin (and us) in console.txt
+-- whether the server's values actually reached this client and what they were.
+local lastEnforcedReport = nil
+
+local function applySandboxOverride()
+    if not isMultiplayer() then return end
+    local sv = SandboxVars and SandboxVars.ConeVisionOutline
+    local report
+    if not sv then
+        report = "Sandbox enforcement OFF (no ConeVisionOutline sandbox options from the server)"
+    elseif not sv.EnforceSettings then
+        report = "Sandbox enforcement OFF (EnforceSettings=false), using this player's own options"
+    else
+        local applied = {}
+        for _, key in ipairs(SANDBOX_ENFORCED) do
+            if sv[key] ~= nil then
+                ConeVisionOutlineOptions[key] = sv[key]
+            end
+            table.insert(applied, key .. "=" .. tostring(sv[key]))
+        end
+        report = "Sandbox enforcement ON: " .. table.concat(applied, ", ")
+    end
+    if report ~= lastEnforcedReport then
+        lastEnforcedReport = report
+        print("[ConeVisionOutline] " .. report)
+    end
+end
+
+local function readModOptions()
     if not PZAPI or not PZAPI.ModOptions then return end
     local options = PZAPI.ModOptions:getOptions(MODULE_ID)
     if options then
@@ -51,6 +96,13 @@ local function applyOptions()
             ConeVisionOutlineOptions.OutlineAnimals = optOutlineAnimals:getValue()
         end
     end
+end
+
+-- The player's own values first, then the server's on top. Reading the player's values
+-- every time is what makes switching EnforceSettings off hand them back.
+local function applyOptions()
+    readModOptions()
+    applySandboxOverride()
 end
 
 local function initConfig()
@@ -120,6 +172,13 @@ Events.OnMainMenuEnter.Add(function()
 end)
 
 Events.OnGameStart.Add(function()
+    applyOptions()
+end)
+
+-- There is no "sandbox options changed" event, so pick up an admin changing the server's
+-- Sandbox settings mid-game on a timer. A game minute lasts from a couple of real seconds up
+-- to a real minute (real-time day length), and this is only a handful of table reads.
+Events.EveryOneMinute.Add(function()
     applyOptions()
 end)
 

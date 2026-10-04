@@ -1,0 +1,67 @@
+VERSION = 1,
+
+option ConeVisionOutline.EnforceSettings
+{
+    type = boolean,
+    default = false,
+    page = ConeVisionOutline,
+    translation = ConeVisionOutline_EnforceSettings,
+}
+
+option ConeVisionOutline.ConeOutlineAlpha
+{
+    type = double,
+    min = 0,
+    max = 1,
+    default = 0.3,
+    page = ConeVisionOutline,
+    translation = ConeVisionOutline_ConeOutlineAlpha,
+}
+
+option ConeVisionOutline.LegacyOutlineMode
+{
+    type = boolean,
+    default = false,
+    page = ConeVisionOutline,
+    translation = ConeVisionOutline_LegacyOutlineMode,
+}
+
+option ConeVisionOutline.ScaleOutlineByLight
+{
+    type = boolean,
+    default = false,
+    page = ConeVisionOutline,
+    translation = ConeVisionOutline_ScaleOutlineByLight,
+}
+
+option ConeVisionOutline.ScaleOutlineByFog
+{
+    type = boolean,
+    default = false,
+    page = ConeVisionOutline,
+    translation = ConeVisionOutline_ScaleOutlineByFog,
+}
+
+option ConeVisionOutline.OutlineAlwaysOn
+{
+    type = boolean,
+    default = false,
+    page = ConeVisionOutline,
+    translation = ConeVisionOutline_OutlineAlwaysOn,
+}
+
+option ConeVisionOutline.VehicleOutlineAlwaysOn
+{
+    type = boolean,
+    default = false,
+    page = ConeVisionOutline,
+    translation = ConeVisionOutline_VehicleOutlineAlwaysOn,
+}
+
+option ConeVisionOutline.OutlineAnimals
+{
+    type = boolean,
+    default = true,
+    page = ConeVisionOutline,
+    translation = ConeVisionOutline_OutlineAnimals,
+}
